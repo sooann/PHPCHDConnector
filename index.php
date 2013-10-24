@@ -16,13 +16,15 @@ include_once('openerpdata.php');
 $__server_listening = true;
 
 const ONLINE_PROTOCOL_ID = 5;
-const COMMAND_FRAME_ID = 3;
+const PLU_LOOKUP_COMMAND_ID = 3;
+const CUSTOMER_COMMAND_ID = 34;
+const TRANSACTIONLOG_COMMAND_ID = 200;
 
 const RESPONSE_OK = 0;
 const RESPONSE_BadFrame = 3;
 const RESPONSE_CMDFail = 6;
 
-$port = 10000;
+$port = 10100;
 $addr = "192.168.1.37";
 
 if (($sock = socket_create(AF_INET, SOCK_STREAM, SOL_TCP)) === false) {
@@ -61,7 +63,6 @@ do {
         // send the client a welcome message
         //socket_write($newsock, "no noobs, but ill make an exception :)\n".
         //"There are ".(count($clients) - 1)." client(s) connected to the server\n");
-
         socket_getpeername($newsock, $ip);
         echo "New client connected: {$ip}\n";
 
@@ -85,8 +86,10 @@ do {
             // continue to the next client to read from, if any
             continue;
         }
-
-        HandleResponse($data,$read_sock);   
+        
+        if (count($data)>0) {
+            HandleResponse($data,$read_sock);   
+        }
        
     } // end of reading foreach
        
@@ -95,46 +98,90 @@ socket_close($sock);
 
 function HandleResponse ($input,$socket) {
     socket_getpeername($socket, $ip);
-    echo "servicing client: $ip\n";
     $byte_array = unpack('C*', $input);
-    if ($byte_array[1]==ONLINE_PROTOCOL_ID) {
-        $datalength = intval($byte_array[3] + $byte_array[2]);
-        echo "Online Protocol initiated - Data length received: ".$datalength."\n";
-        $command = $byte_array[4];
-        if ($command==COMMAND_FRAME_ID) {
-            echo "PLU lookup command received\n";
-            $value="";
-            for ($i=5;$i<(count($byte_array)+1);$i++) {
-                $value .= chr($byte_array[$i]);
-            }
-            echo "Looking up item number: ".$value."\n";
-            $data = new OpenERPdata;
-            if ($value=="10") {
-                echo "PLU $value Item Found\n";
-                $pluData = "10,\"PLU 10\",120,0,0,1,1,0,0,0,0";
-                $data = BuildResponseFrame(ONLINE_PROTOCOL_ID, RESPONSE_OK, $pluData);
-                print "Response : $data\n";
-                print "Data Length : ".strlen($data)."\n";
-                socket_write($socket, $data, strlen($data));
-            } else {
-                $res = $data->queryProduct($value);
-                if ($res!=null) {
-                    echo "PLU $value Item Found\n";
-                    $price = $data->queryProductPrice("1", $res[0]["id"], 1);
-                    $pluData = "$value,\"".$res[0]["name"]."\",".$price.",0,0,1,1,0,0,0,0";
-                    $data = BuildResponseFrame(ONLINE_PROTOCOL_ID, RESPONSE_OK, $pluData);
-                    print "Response : $data\n";
-                    print "Data Length : ".strlen($data)."\n";
-                } else {
-                    echo "Item not found\n";
-                    $data = BuildResponseFrame(ONLINE_PROTOCOL_ID, RESPONSE_CMDFail);
-                    print "Response : $data\n";
-                    print "Data Length : ".strlen($data)."\n";
+    if (count($byte_array)>0) {
+        echo "servicing client: $ip\n";
+        //echo "data received: ".dataString($byte_array)."\n";
+        if ($byte_array[1]==ONLINE_PROTOCOL_ID) {
+            $datalength = (intval($byte_array[3])*255)+intval($byte_array[2]);
+            echo "Online Protocol initiated - Data length received: ".$datalength."\n";
+            $command = $byte_array[4];
+            if ($command==PLU_LOOKUP_COMMAND_ID) {
+                echo "PLU lookup command received\n";
+                $value="";
+                for ($i=5;$i<(count($byte_array)+1);$i++) {
+                    $value .= chr($byte_array[$i]);
                 }
-                socket_write($socket, $data, strlen($data));
+                echo "Looking up item number: ".$value."\n";
+                $data = new OpenERPdata;
+                if ($value=="10") {
+                    echo "PLU $value Item Found\n";
+                    $pluData = "10,\"PLU 10\",120,0,0,1,1,0,0,0,0";
+                    $data = BuildResponseFrame(ONLINE_PROTOCOL_ID, RESPONSE_OK, $pluData);
+                    //print "Response : ".dataByteString($data)."\n";
+                    //print "Data Length : ".strlen($data)."\n";
+                    socket_write($socket, $data, strlen($data));
+                } else {
+                    $res = $data->queryProduct($value);
+                    if ($res!=null) {
+                        echo "PLU $value Item Found\n";
+                        $price = $data->queryProductPrice("1", $res[0]["id"], 1);
+                        $pluData = "$value,\"".$res[0]["name"]."\",".$price.",0,0,1,1,0,0,0,0";
+                        $data = BuildResponseFrame(ONLINE_PROTOCOL_ID, RESPONSE_OK, $pluData);
+                        print "Response : ".dataByteString($data)."\n";
+                        print "Data Length : ".strlen($data)."\n";
+                    } else {
+                        echo "Item not found\n";
+                        $data = BuildResponseFrame(ONLINE_PROTOCOL_ID, RESPONSE_CMDFail);
+                        //print "Response : $data\n";
+                        //print "Data Length : ".strlen($data)."\n";
+                    }
+                    socket_write($socket, $data, strlen($data));
+                }
+            } elseif ($command==CUSTOMER_COMMAND_ID) {
+                echo "Customer command received\n";
+                $value="";
+                for ($i=5;$i<(count($byte_array)+1);$i++) {
+                    $value .= chr($byte_array[$i]);
+                }
+                echo "Looking up Customer: ".$value."\n";
+
+                echo "Item not found\n";
+                $data = BuildResponseFrame(ONLINE_PROTOCOL_ID, RESPONSE_CMDFail);
+                //print "Response : $data\n";
+                //print "Data Length : ".strlen($data)."\n";
+                socket_write($socket, $data, strlen($data));        
+            } elseif ($command==TRANSACTIONLOG_COMMAND_ID) {
+                echo "Transaction Log received\n";
+                $value="";
+                for ($i=5;$i<(count($byte_array)+1);$i++) {
+                    $value .= chr($byte_array[$i]).",";
+                }
+                echo "Data: ".$value."\n";
+                $data = BuildResponseFrame(ONLINE_PROTOCOL_ID, RESPONSE_OK);
+                //print "Response : $data\n";
+                //print "Data Length : ".strlen($data)."\n";
+                socket_write($socket, $data, strlen($data)); 
             }
         }
-    }   
+    }
+}
+
+function dataString ($byte_array) {
+    $output = "";
+    if (count($byte_array)>0) {
+        for ($i=1;$i<count($byte_array);$i++) {
+            $output.=intval($byte_array[$i]).",";
+        }
+        return $output;
+    } else {
+        return "(No Data)";
+    }
+}
+
+function dataByteString($byte_array) {
+    $byte_array = unpack('C*', $byte_array);
+    return dataString($byte_array);
 }
 
 function BuildResponseFrame ($reponseType, $responseCode, $responseData=null) {
