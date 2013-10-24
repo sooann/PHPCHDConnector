@@ -11,6 +11,8 @@
  * @author daniell
  */
 
+include_once('openerpdata.php');
+
 $__server_listening = true;
 
 const ONLINE_PROTOCOL_ID = 5;
@@ -20,8 +22,8 @@ const RESPONSE_OK = 0;
 const RESPONSE_BadFrame = 3;
 const RESPONSE_CMDFail = 6;
 
-$port = 5000;
-$addr = "192.168.1.141";
+$port = 10000;
+$addr = "192.168.1.37";
 
 if (($sock = socket_create(AF_INET, SOCK_STREAM, SOL_TCP)) === false) {
     echo "socket_create() failed: reason: " . socket_strerror(socket_last_error()) . "\n";
@@ -106,6 +108,7 @@ function HandleResponse ($input,$socket) {
                 $value .= chr($byte_array[$i]);
             }
             echo "Looking up item number: ".$value."\n";
+            $data = new OpenERPdata;
             if ($value=="10") {
                 echo "PLU $value Item Found\n";
                 $pluData = "10,\"PLU 10\",120,0,0,1,1,0,0,0,0";
@@ -114,10 +117,20 @@ function HandleResponse ($input,$socket) {
                 print "Data Length : ".strlen($data)."\n";
                 socket_write($socket, $data, strlen($data));
             } else {
-                echo "Item not found\n";
-                $data = BuildResponseFrame(ONLINE_PROTOCOL_ID, RESPONSE_CMDFail);
-                print "Response : $data\n";
-                print "Data Length : ".strlen($data)."\n";
+                $res = $data->queryProduct($value);
+                if ($res!=null) {
+                    echo "PLU $value Item Found\n";
+                    $price = $data->queryProductPrice("1", $res[0]["id"], 1);
+                    $pluData = "$value,\"".$res[0]["name"]."\",".$price.",0,0,1,1,0,0,0,0";
+                    $data = BuildResponseFrame(ONLINE_PROTOCOL_ID, RESPONSE_OK, $pluData);
+                    print "Response : $data\n";
+                    print "Data Length : ".strlen($data)."\n";
+                } else {
+                    echo "Item not found\n";
+                    $data = BuildResponseFrame(ONLINE_PROTOCOL_ID, RESPONSE_CMDFail);
+                    print "Response : $data\n";
+                    print "Data Length : ".strlen($data)."\n";
+                }
                 socket_write($socket, $data, strlen($data));
             }
         }
