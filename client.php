@@ -5,8 +5,8 @@
  * and open the template in the editor.
  */
 
-$address = "124.197.69.46";
-$service_port = 5000;
+$address = "192.168.1.37";
+$service_port = 10000;
 
 $socket = socket_create(AF_INET, SOCK_STREAM, SOL_TCP);
 if ($socket === false) {
